@@ -3,7 +3,7 @@
 ;; Author: Vegard Øye <vegard_oye at hotmail.com>
 ;; Maintainer: Vegard Øye <vegard_oye at hotmail.com>
 
-;; Version: 1.2.3
+;; Version: 1.2.12
 
 ;;
 ;; This file is NOT part of GNU Emacs.
@@ -51,7 +51,8 @@
       '(what-cursor-position))
 (mapc #'evil-declare-change-repeat
       '(dabbrev-expand
-        hippie-expand))
+        hippie-expand
+        quoted-insert))
 (mapc #'evil-declare-abort-repeat
       '(balance-windows
         eval-expression
@@ -469,8 +470,13 @@ the mark and entering `recursive-edit'."
 (declare-function 'avy-goto-line "avy")
 (declare-function 'avy-goto-char "avy")
 (declare-function 'avy-goto-char-2 "avy")
+(declare-function 'avy-goto-char-2-above "avy")
+(declare-function 'avy-goto-char-2-below "avy")
+(declare-function 'avy-goto-char-in-line "avy")
 (declare-function 'avy-goto-word-0 "avy")
 (declare-function 'avy-goto-word-1 "avy")
+(declare-function 'avy-goto-word-1-above "avy")
+(declare-function 'avy-goto-word-1-below "avy")
 (declare-function 'avy-goto-subword-0 "avy")
 (declare-function 'avy-goto-subword-1 "avy")
 
@@ -504,8 +510,13 @@ Based on `evil-enclose-ace-jump-for-motion'."
 (evil-define-avy-motion avy-goto-line line)
 (evil-define-avy-motion avy-goto-char inclusive)
 (evil-define-avy-motion avy-goto-char-2 inclusive)
+(evil-define-avy-motion avy-goto-char-2-above inclusive)
+(evil-define-avy-motion avy-goto-char-2-below inclusive)
+(evil-define-avy-motion avy-goto-char-in-line inclusive)
 (evil-define-avy-motion avy-goto-word-0 exclusive)
 (evil-define-avy-motion avy-goto-word-1 exclusive)
+(evil-define-avy-motion avy-goto-word-1-above exclusive)
+(evil-define-avy-motion avy-goto-word-1-below exclusive)
 (evil-define-avy-motion avy-goto-subword-0 exclusive)
 (evil-define-avy-motion avy-goto-subword-1 exclusive)
 
@@ -514,8 +525,13 @@ Based on `evil-enclose-ace-jump-for-motion'."
                    avy-goto-line
                    avy-goto-char
                    avy-goto-char-2
+                   avy-goto-char-2-above
+                   avy-goto-char-2-below
+                   avy-goto-char-in-line
                    avy-goto-word-0
                    avy-goto-word-1
+                   avy-goto-word-1-above
+                   avy-goto-word-1-below
                    avy-goto-subword-0
                    avy-goto-subword-1))
   (define-key evil-motion-state-map

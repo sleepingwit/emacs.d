@@ -3,6 +3,8 @@
 ;; http://stackoverflow.com/questions/3875213/turning-on-linum-mode-when-in-python-c-mode
 (setq linum-mode-inhibit-modes-list '(eshell-mode
                                       shell-mode
+                                      profiler-report-mode
+                                      ffip-diff-mode
                                       dictionary-mode
                                       erc-mode
                                       browse-kill-ring-mode
@@ -13,6 +15,8 @@
                                       fundamental-mode
                                       jabber-roster-mode
                                       jabber-chat-mode
+                                      inferior-js-mode
+                                      inferior-python-mode
                                       inferior-scheme-mode
                                       twittering-mode
                                       compilation-mode
@@ -39,4 +43,10 @@
            (unless (member major-mode linum-mode-inhibit-modes-list)
              ad-do-it))
 (ad-activate 'linum-on)
+
+;; updated line number every second
+(setq linum-delay t)
+(defadvice linum-schedule (around my-linum-schedule () activate)
+  (run-with-idle-timer 1 nil #'linum-update-current))
+
 (provide 'init-linum-mode)

@@ -10,9 +10,21 @@
          retval)
      ,@clean-up))
 
-;;----------------------------------------------------------------------------
+;; {{ copied from http://ergoemacs.org/emacs/elisp_read_file_content.html
+(defun get-string-from-file (filePath)
+  "Return filePath's file content."
+  (with-temp-buffer
+    (insert-file-contents filePath)
+    (buffer-string)))
+
+(defun read-lines (filePath)
+  "Return a list of lines of a file at filePath."
+  (with-temp-buffer
+    (insert-file-contents filePath)
+    (split-string (buffer-string) "\n" t)))
+;; }}
+
 ;; Handier way to add modes to auto-mode-alist
-;;----------------------------------------------------------------------------
 (defun add-auto-mode (mode &rest patterns)
   "Add entries to `auto-mode-alist' to use `MODE' for all given file `PATTERNS'."
   (dolist (pattern patterns)
@@ -36,19 +48,41 @@
   "Remove trailing whitespace from `STR'."
   (replace-regexp-in-string "[ \t\n]*$" "" str))
 
-
-;;----------------------------------------------------------------------------
 ;; Find the directory containing a given library
-;;----------------------------------------------------------------------------
-(autoload 'find-library-name "find-func")
 (defun directory-of-library (library-name)
   "Return the directory in which the `LIBRARY-NAME' load file is found."
   (file-name-as-directory (file-name-directory (find-library-name library-name))))
 
+(defun my-insert-str (str)
+  ;; ivy8 or ivy9
+  (if (consp str) (setq str (cdr str)))
+  ;; evil-mode?
+  (if (and (functionp 'evil-normal-state-p)
+           (boundp 'evil-move-cursor-back)
+           (evil-normal-state-p)
+           (not (eolp))
+           (not (eobp)))
+      (forward-char))
+  ;; insert now
+  (insert str))
 
-;;----------------------------------------------------------------------------
+(defun my-line-str (&optional line-end)
+  (buffer-substring-no-properties (line-beginning-position)
+                                  (if line-end line-end (line-end-position))))
+
+(defun my-buffer-str ()
+  (buffer-substring-no-properties (point-min) (point-max)))
+
+(defun my-selected-str ()
+  (buffer-substring-no-properties (region-beginning) (region-end)))
+
+(defun my-use-selected-string-or-ask (hint)
+  "Use selected region or ask user input for string."
+  (if (region-active-p) (my-selected-str)
+    (if (string= "" hint) (thing-at-point 'symbol)
+      (read-string hint))))
+
 ;; Delete the current file
-;;----------------------------------------------------------------------------
 (defun delete-this-file ()
   "Delete the current file, and kill the buffer."
   (interactive)
@@ -101,6 +135,11 @@
 
 (defvar load-user-customized-major-mode-hook t)
 (defvar cached-normal-file-full-path nil)
+
+(defun buffer-too-big-p ()
+  (or (> (buffer-size) (* 5000 64))
+      (> (line-number-at-pos (point-max)) 5000)))
+
 (defun is-buffer-file-temp ()
   (interactive)
   "If (buffer-file-name) is nil or a temp file or HTML file converted from org file"
@@ -126,4 +165,124 @@
       (setq rlt nil)))
     rlt))
 
+(defun my-guess-mplayer-path ()
+  (let* ((rlt "mplayer"))
+    (cond
+     (*is-a-mac* (setq rlt "mplayer -quiet"))
+     (*linux* (setq rlt "mplayer -quiet -stop-xscreensaver"))
+     (*cygwin*
+      (if (file-executable-p "/cygdrive/c/mplayer/mplayer.exe")
+          (setq rlt "/cygdrive/c/mplayer/mplayer.exe -quiet")
+        (setq rlt "/cygdrive/d/mplayer/mplayer.exe -quiet")))
+     (t ; windows
+      (if (file-executable-p "c:\\\\mplayer\\\\mplayer.exe")
+          (setq rlt "c:\\\\mplayer\\\\mplayer.exe -quiet")
+        (setq rlt "d:\\\\mplayer\\\\mplayer.exe -quiet"))))
+    rlt))
+
+(defun my-guess-image-viewer-path (file &optional is-stream)
+  (let ((rlt "mplayer"))
+    (cond
+     (*is-a-mac*
+      (setq rlt
+            (format "open %s &" file)))
+     (*linux*
+      (setq rlt
+            (if is-stream (format "curl -L %s | feh -F - &" file) (format "feh -F %s &" file))))
+     (*cygwin* (setq rlt "feh -F"))
+     (t ; windows
+      (setq rlt
+            (format "rundll32.exe %SystemRoot%\\\\System32\\\\\shimgvw.dll, ImageView_Fullscreen %s &" file))))
+    rlt))
+
+;; {{ simpleclip has problem on Emacs 25.1
+(defun test-simpleclip ()
+  (unwind-protect
+      (let (retval)
+        (condition-case ex
+            (progn
+              (simpleclip-set-contents "testsimpleclip!")
+              (setq retval
+                    (string= "testsimpleclip!"
+                             (simpleclip-get-contents))))
+          ('error
+           (message (format "Please install %s to support clipboard from terminal."
+                            (cond
+                             (*unix*
+                              "xsel or xclip")
+                             ((or *cygwin* *wind64*)
+                              "cygutils-extra from Cygwin")
+                             (t
+                              "CLI clipboard tools"))))
+           (setq retval nil)))
+        retval)))
+
+(setq simpleclip-works (test-simpleclip) )
+
+(defun my-gclip ()
+  (if simpleclip-works (simpleclip-get-contents)
+    (cond
+     ((eq system-type 'darwin)
+      (with-output-to-string
+        (with-current-buffer standard-output
+          (call-process "/usr/bin/pbpaste" nil t nil "-Prefer" "txt"))))
+     ((eq system-type 'cygwin)
+      (with-output-to-string
+        (with-current-buffer standard-output
+          (call-process "getclip" nil t nil))))
+     ((memq system-type '(gnu gnu/linux gnu/kfreebsd))
+      (with-output-to-string
+        (with-current-buffer standard-output
+          (call-process "xsel" nil t nil "--clipboard" "--output")))))))
+
+(defun my-pclip (str-val)
+  (if simpleclip-works (simpleclip-set-contents str-val)
+    (cond
+     ((eq system-type 'darwin)
+      (with-temp-buffer
+        (insert str-val)
+        (call-process-region (point-min) (point-max) "/usr/bin/pbcopy")))
+     ((eq system-type 'cygwin)
+      (with-temp-buffer
+        (insert str-val)
+        (call-process-region (point-min) (point-max) "putclip")))
+     ((memq system-type '(gnu gnu/linux gnu/kfreebsd))
+      (with-temp-buffer
+        (insert str-val)
+        (call-process-region (point-min) (point-max) "xsel" nil nil nil "--clipboard" "--input"))))))
+;; }}
+
+(defun make-concated-string-from-clipboard (concat-char)
+  (let* ((str (replace-regexp-in-string "'" "" (upcase (my-gclip))))
+         (rlt (replace-regexp-in-string "[ ,-:]+" concat-char str)))
+    rlt))
+
+;; {{ diff region SDK
+(defun diff-region-exit-from-certain-buffer (buffer-name)
+  (bury-buffer buffer-name)
+  (winner-undo))
+
+(defmacro diff-region-open-diff-output (content buffer-name)
+  `(let ((rlt-buf (get-buffer-create ,buffer-name)))
+    (save-current-buffer
+      (switch-to-buffer-other-window rlt-buf)
+      (set-buffer rlt-buf)
+      (erase-buffer)
+      (insert ,content)
+      (diff-mode)
+      (goto-char (point-min))
+      ;; evil keybinding
+      (if (fboundp 'evil-local-set-key)
+          (evil-local-set-key 'normal "q"
+                              (lambda ()
+                                (interactive)
+                                (diff-region-exit-from-certain-buffer ,buffer-name))))
+      ;; Emacs key binding
+      (local-set-key (kbd "C-c C-c")
+                     (lambda ()
+                       (interactive)
+                       (diff-region-exit-from-certain-buffer ,buffer-name)))
+      )))
+
+;; }}
 (provide 'init-utils)

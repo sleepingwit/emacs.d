@@ -1,59 +1,90 @@
 ;; {{ make IME compatible with evil-mode
 (defun evil-toggle-input-method ()
-  "when toggle on input method, switch to evil-insert-state if possible.
-when toggle off input method, switch to evil-normal-state if current state is evil-insert-state"
+  "when toggle on input method, goto evil-insert-state. "
   (interactive)
-  ;; some guy donot use evil-mode at all
-  (if (fboundp 'evil-insert-state)
-      (if (not current-input-method)
-          (if (not (string= evil-state "insert"))
-              (evil-insert-state))
-        (if (string= evil-state "insert")
-            (evil-normal-state)
-          )))
-  ;; my way to toggle-input-method, the original implementation has some weird bug
-  (if current-input-method
-      (progn
-        (deactivate-input-method)
-        (setq current-input-method nil))
-    (unless (bound-and-true-p chinese-pyim)
-      (require 'chinese-pyim))
-    (activate-input-method default-input-method)
-    (setq current-input-method default-input-method)))
+
+  ;; load IME when needed, less memory footprint
+  (unless (featurep 'chinese-pyim)
+    (require 'chinese-pyim))
+
+  ;; some guy don't use evil-mode at all
+  (cond
+   ((and (boundp 'evil-mode) evil-mode)
+    ;; evil-mode
+    (cond
+     ((eq evil-state 'insert)
+      (toggle-input-method))
+     (t
+      (evil-insert-state)
+      (unless current-input-method
+        (toggle-input-method))))
+    (if current-input-method (message "IME on!")))
+   (t
+    ;; NOT evil-mode
+    (toggle-input-method))))
+
+(defadvice evil-insert-state (around evil-insert-state-hack activate)
+  ad-do-it
+  (if current-input-method (message "IME on!")))
 
 (global-set-key (kbd "C-\\") 'evil-toggle-input-method)
 ;; }}
 
+(defvar my-pyim-directory
+  "~/.eim"
+  "There directory of peronsal dictionaries for chinese-pyim.")
+
+(add-to-list 'auto-mode-alist '("\\.pyim\\'" . text-mode))
+
+(defun my-pyim-personal-dict (&optional dict-name)
+  (file-truename (concat (file-name-as-directory my-pyim-directory)
+                         (or dict-name "personal.pyim"))))
+
+(defun my-pyim-export-dictionary ()
+  "Export words you use in chinese-pyim into personal dictionary."
+  (interactive)
+  (with-temp-buffer
+    (maphash
+     #'(lambda (key value)
+         ;; only export two character word
+         (if (string-match "-" key)
+             (insert (concat key
+                             " "
+                             (mapconcat #'identity value ""))
+                     "\n")))
+     pyim-dcache-icode2word)
+    (unless (and my-pyim-directory
+                 (file-directory-p my-pyim-directory))
+      (setq my-pyim-directory
+            (read-directory-name "Personal Chinese dictionary directory:")))
+    (if my-pyim-directory
+        (write-file (my-pyim-personal-dict)))))
+
 (eval-after-load 'chinese-pyim
   '(progn
+     ;; I'm OK with a smaller dictionary
+     (chinese-pyim-basedict-enable)
+     ;; use western punctuation (ban jiao fu hao)
+     (setq pyim-punctuation-dict nil)
+     ;; always input English when isearch
+     (setq pyim-isearch-enable-pinyin-search t)
      (setq default-input-method "chinese-pyim")
-     (setq pyim-use-tooltip nil)              ; don't use tooltip
-     (setq pyim-dicts '((:name "pinyin1" :file "~/.eim/py.txt" :coding utf-8-unix)))
+     ;; re-order backends, I prefer less typing
+     (setq pyim-backends '(pinyin-shortcode
+                           pinyin-znabc
+                           dcache-personal
+                           dcache-common
+                           pinyin-chars))
+     ;; use personal dictionary
+     (if (and my-pyim-directory
+              (file-exists-p (my-pyim-personal-dict)))
+         (add-to-list 'pyim-dicts (list :name "personal" :file (my-pyim-personal-dict))))
 
-     ;; {{ fuzzy pinyin setup
-     (defun pyim-fuzzy-pinyin-adjust-shanghai ()
-       "As Shanghai guy, I can't tell difference between:
-  - 'en' and 'eng'
-  - 'in' and 'ing'"
-       (interactive)
-       (cond
-        ((string-match-p "[a-z][ei]ng?-.*[a-z][ei]ng?" pyim-current-key)
-         ;; for two fuzzy pinyin characters, just use its SHENMU as key
-         (setq pyim-current-key (replace-regexp-in-string "\\([a-z]\\)[ie]ng" "\\1" pyim-current-key)))
-        (t
-         ;; single fuzzy pinyin character
-         (cond
-          ((string-match-p "[ei]ng" pyim-current-key)
-           (setq pyim-current-key (replace-regexp-in-string "\\([ei]\\)ng" "\\1n" pyim-current-key)))
-          ((string-match-p "[ie]n[^g]*" pyim-current-key)
-           (setq pyim-current-key (replace-regexp-in-string "\\([ie]\\)n" "\\1ng" pyim-current-key))))))
-       (pyim-handle-string))
+     ;; You can also set up the great dictionary (80M) the same way as peronsal dictionary
+     ;; great dictionary can be downloaded this way:
+     ;; `curl -L https://github.com/tumashu/chinese-pyim-greatdict/raw/master/pyim-greatdict.pyim.gz | zcat > ~/.eim/pyim-greatdict.pyim`
 
-     ;; Comment out below line for default fuzzy algorithm,
-     ;; or just `(setq pyim-fuzzy-pinyin-adjust-function nil)`
-     (setq pyim-fuzzy-pinyin-adjust-function 'pyim-fuzzy-pinyin-adjust-shanghai)
-     ;; }}
-
-     ))
+     ;; don't use tooltip
+     (setq pyim-use-tooltip 'popup)))
 
 (provide 'init-chinese-pyim)

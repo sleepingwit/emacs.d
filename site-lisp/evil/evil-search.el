@@ -3,7 +3,7 @@
 ;; Author: Vegard Øye <vegard_oye at hotmail.com>
 ;; Maintainer: Vegard Øye <vegard_oye at hotmail.com>
 
-;; Version: 1.2.3
+;; Version: 1.2.12
 
 ;;
 ;; This file is NOT part of GNU Emacs.
@@ -770,7 +770,7 @@ the direcion is determined by `evil-ex-search-direction'."
         ;; maybe skip end-of-line
         (when (and evil-move-cursor-back (eolp) (not (eobp)))
           (forward-char)))
-      (let ((res (evil-ex-find-next)))
+      (let ((res (evil-ex-find-next nil nil (not evil-search-wrap))))
         (cond
          ((not res)
           (goto-char orig)
@@ -940,7 +940,8 @@ any error conditions."
           (throw 'done (list 'empty-pattern pat offset)))
         (let (search-result)
           (while (> count 0)
-            (let ((result (evil-ex-find-next pat direction)))
+            (let ((result (evil-ex-find-next pat direction
+                                             (not evil-search-wrap))))
               (if (not result) (setq search-result nil count 0)
                 (setq search-result
                       (if (or (eq result 'wrap)
@@ -1045,6 +1046,10 @@ current search result."
             (goto-char (+ beg count))
             (setq evil-this-type 'inclusive))))))))
 
+(defun evil-ex-search-setup ()
+  "Hook to initialize the minibuffer for ex search."
+  (add-hook 'pre-command-hook #'evil-ex-remove-default))
+
 (defun evil-ex-start-search (direction count)
   "Start a new search in a certain DIRECTION."
   ;; store buffer and window where the search started
@@ -1060,9 +1065,15 @@ current search result."
       (let* ((minibuffer-local-map evil-ex-search-keymap)
              (search-string
               (condition-case err
-                  (read-string (if (eq evil-ex-search-direction 'forward)
-                                   "/" "?")
-                               nil 'evil-ex-search-history)
+                  (minibuffer-with-setup-hook
+                      #'evil-ex-search-setup
+                    (read-string (if (eq evil-ex-search-direction 'forward)
+                                     "/" "?")
+                                 (and evil-ex-search-history
+                                      (propertize
+                                       (car evil-ex-search-history)
+                                       'face 'shadow))
+                                 'evil-ex-search-history))
                 (quit
                  (evil-ex-search-stop-session)
                  (evil-ex-delete-hl 'evil-ex-search)
